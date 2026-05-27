@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -22,6 +23,31 @@ FRONTEND_DIST = ROOT / "frontend" / "dist"
 app = FastAPI(title="Image Generator")
 
 
+@app.on_event("startup")
+async def _preload_model():
+    """Warm up the pipeline at startup so first Generate is instant."""
+    def _load():
+        def _progress(step, total, msg):
+            BUS.push("__preload__", {
+                "type": "progress",
+                "step": step,
+                "total": max(total, 1),
+                "pct": min(100, int(step * 100 / max(total, 1))),
+                "message": msg,
+                "ts": time.time(),
+            })
+        try:
+            MANAGER.ensure(_progress)
+            BUS.push("__preload__", {"type": "done", "message": "Model ready."})
+        except Exception as e:
+            BUS.push("__preload__", {"type": "error", "message": str(e)})
+        finally:
+            BUS.close("__preload__")
+
+    BUS.open_named("__preload__")
+    threading.Thread(target=_load, daemon=True).start()
+
+
 # ---------- Settings ----------
 @app.get("/api/settings")
 def get_settings():
@@ -35,6 +61,43 @@ class SettingsPatch(BaseModel):
 @app.post("/api/settings")
 def update_settings(patch: SettingsPatch):
     return settings_mod.save(patch.data)
+
+
+# ---------- Model state ----------
+@app.get("/api/model/ready")
+def model_ready():
+    """Returns whether the pipeline is loaded and ready to generate."""
+    return {
+        "ready": MANAGER.is_ready(),
+        "loading": MANAGER.is_loading(),
+    }
+
+
+@app.get("/api/model/preload/stream")
+async def preload_stream():
+    """SSE stream for startup model loading progress."""
+    q = BUS.get("__preload__")
+    if q is None:
+        # Already done — return synthetic done event
+        async def _done():
+            yield 'data: {"type":"done","message":"Model already loaded."}\n\n'
+        return StreamingResponse(_done(), media_type="text/event-stream")
+
+    async def event_gen():
+        try:
+            while True:
+                try:
+                    event = await asyncio.get_event_loop().run_in_executor(
+                        None, q.get, True, 120)
+                except Exception:
+                    break
+                yield f"data: {json.dumps(event)}\n\n"
+                if event.get("type") in ("end", "done", "error"):
+                    break
+        finally:
+            BUS.discard("__preload__")
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 # ---------- Ollama ----------
@@ -129,6 +192,8 @@ class GenerateIn(BaseModel):
 def generate(payload: GenerateIn):
     if not payload.prompt.strip():
         raise HTTPException(400, "Prompt is empty")
+    if MANAGER.is_loading():
+        raise HTTPException(503, "Model is still loading, please wait...")
     jid = BUS.open()
     params = payload.model_dump()
     threading.Thread(target=MANAGER.run, args=(params, jid), daemon=True).start()
@@ -145,7 +210,9 @@ async def generate_stream(jid: str):
         try:
             while True:
                 try:
-                    event = await asyncio.get_event_loop().run_in_executor(None, q.get, True, 60)
+                    # 120s timeout — longer than the slowest single step
+                    event = await asyncio.get_event_loop().run_in_executor(
+                        None, q.get, True, 120)
                 except Exception:
                     break
                 yield f"data: {json.dumps(event)}\n\n"
