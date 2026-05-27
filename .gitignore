@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/
+frontend/node_modules/
+frontend/dist/
+.DS_Store
+build/
+dist/
+*.spec
+installer/Output/
+installer/find_iscc.ps1
+installer/find_iscc2.ps1
+kernel.errors.txt
+package-lock.json
