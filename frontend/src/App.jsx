@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Sparkles, Image as ImageIcon, Settings as SettingsIcon, ShieldAlert } from "lucide-react";
 import { api } from "./api.js";
 import GeneratePage from "./pages/GeneratePage.jsx";
@@ -12,14 +12,25 @@ const PAGES = [
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
+const DEFAULT_PARAMS = {
+  width: 512, height: 512, steps: 25, guidance: 7.5, seed: -1,
+  negative_prompt: "lowres, blurry, deformed, ugly, watermark, text",
+};
+
 export default function App() {
   const [page, setPage] = useState("generate");
   const [settings, setSettings] = useState(null);
   const [showUncensoredModal, setShowUncensoredModal] = useState(false);
 
+  // Prompt state lifted here so it survives page switches
+  const [prompt, setPrompt] = useState("");
+  const [originalPrompt, setOriginalPrompt] = useState(null);
+  const [params, setParams] = useState(DEFAULT_PARAMS);
+
   const refreshSettings = useCallback(async () => {
     const s = await api.getSettings();
     setSettings(s);
+    setParams(p => ({ ...DEFAULT_PARAMS, ...(s.defaults || {}), ...p }));
     document.body.className = `theme-${s.uncensored ? "red" : s.theme}`;
   }, []);
 
@@ -112,20 +123,30 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main */}
+      {/* Main — never unmount pages, just hide them so state is preserved */}
       <main className="flex-1 min-w-0 scroll-y">
-        {page === "generate" && (
-          <GeneratePage settings={settings} updateSettings={updateSettings} />
-        )}
-        {page === "gallery" && <GalleryPage />}
-        {page === "settings" && (
+        <div style={{ display: page === "generate" ? "block" : "none" }}>
+          <GeneratePage
+            settings={settings}
+            prompt={prompt}
+            setPrompt={setPrompt}
+            originalPrompt={originalPrompt}
+            setOriginalPrompt={setOriginalPrompt}
+            params={params}
+            setParams={setParams}
+          />
+        </div>
+        <div style={{ display: page === "gallery" ? "block" : "none" }}>
+          <GalleryPage />
+        </div>
+        <div style={{ display: page === "settings" ? "block" : "none" }}>
           <SettingsPage
             settings={settings}
             updateSettings={updateSettings}
             requestUncensored={requestUncensored}
             refreshSettings={refreshSettings}
           />
-        )}
+        </div>
       </main>
 
       {showUncensoredModal && (

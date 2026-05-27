@@ -1,18 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Wand2, Sparkles, Settings2, Undo2, RefreshCw, Image as ImageIcon, Loader2, Dice5,
 } from "lucide-react";
 import { api } from "../api.js";
 
-const DEFAULTS = {
-  width: 512, height: 512, steps: 25, guidance: 7.5, seed: -1,
-  negative_prompt: "lowres, blurry, deformed, ugly, watermark, text",
-};
-
-export default function GeneratePage({ settings }) {
-  const [prompt, setPrompt] = useState("");
-  const [originalPrompt, setOriginalPrompt] = useState(null);
-  const [params, setParams] = useState({ ...DEFAULTS, ...(settings.defaults || {}) });
+export default function GeneratePage({
+  settings,
+  prompt, setPrompt,
+  originalPrompt, setOriginalPrompt,
+  params, setParams,
+}) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [rewriting, setRewriting] = useState(false);
@@ -20,8 +17,6 @@ export default function GeneratePage({ settings }) {
   const [lastImage, setLastImage] = useState(null);
   const [error, setError] = useState("");
   const stopFnRef = useRef(null);
-
-  useEffect(() => () => stopFnRef.current?.(), []);
 
   const setParam = (k, v) => setParams((p) => ({ ...p, [k]: v }));
 
@@ -103,7 +98,7 @@ export default function GeneratePage({ settings }) {
             className="textarea min-h-[110px] flex-1 resize-y"
             placeholder="Describe the image you want to generate..."
             value={prompt}
-            onChange={(e) => { setPrompt(e.target.value); if (originalPrompt === null) setOriginalPrompt(null); }}
+            onChange={(e) => setPrompt(e.target.value)}
           />
           <div className="flex flex-col gap-2">
             <button
@@ -204,7 +199,9 @@ export default function GeneratePage({ settings }) {
         </div>
         {(generating || progress.pct > 0) && (
           <div className="flex flex-col gap-2">
-            <div className="progress-track"><div className="progress-fill" style={{ width: `${progress.pct}%` }} /></div>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${progress.pct}%` }} />
+            </div>
             <div className="flex items-center justify-between text-xs" style={{ color: "var(--fg-muted)" }}>
               <span className={generating ? "animate-pulseSoft" : ""}>{progress.message || "Idle"}</span>
               <span>{progress.pct}%</span>
