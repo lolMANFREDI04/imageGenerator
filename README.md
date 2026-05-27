@@ -78,3 +78,8 @@ The setup wizard exposes:
 `launcher.py` recognises `--download-model` and delegates to
 `installer/download_model_cli.py`. This is what Inno Setup runs as a
 post-install step.
+
+
+### Avvio versione web
+
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8766 --reload
